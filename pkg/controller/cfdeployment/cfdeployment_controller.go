@@ -5,7 +5,7 @@ import (
 	"log"
 
 	fissilev1alpha1 "code.cloudfoundry.org/cf-operator/pkg/apis/fissile/v1alpha1"
-	yaml "gopkg.in/yaml.v2"
+	dm "code.cloudfoundry.org/cf-operator/pkg/deployment_manifest"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,14 +80,6 @@ type ReconcileCFDeployment struct {
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
-type InstanceGroup struct {
-	Name      string
-	Instances int
-}
-type Manifest struct {
-	InstanceGroups []InstanceGroup `yaml:"instance-groups"`
-}
-
 func (r *ReconcileCFDeployment) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	log.Printf("Reconciling CFDeployment %s/%s\n", request.Namespace, request.Name)
 
@@ -106,21 +98,9 @@ func (r *ReconcileCFDeployment) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// retrieve secret manifest
-	config := &corev1.ConfigMap{}
-	ref := instance.Spec.ManifestRef
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: ref, Namespace: request.Namespace}, config)
+	manifest, err := dm.ResolveCRD(instance.Spec, r.client, request.Namespace)
 	if err != nil {
 		return reconcile.Result{}, err
-	}
-	// unmarshal manifet.data into bosh deployment mana... LoadManifest() from fisisle
-	m, ok := config.Data["manifest"]
-	if !ok {
-		return reconcile.Result{}, nil
-	}
-	manifest := &Manifest{}
-	err = yaml.Unmarshal([]byte(m), manifest)
-	if err != nil {
-		return reconcile.Result{}, nil
 	}
 
 	// TODO validation
@@ -154,12 +134,8 @@ func (r *ReconcileCFDeployment) Reconcile(request reconcile.Request) (reconcile.
 	return reconcile.Result{}, nil
 }
 
-// TODO:
-// *  alidate manifest
-// *
-
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *Manifest) *corev1.Pod {
+func newPodForCR(cr *dm.Manifest) *corev1.Pod {
 	ig := cr.InstanceGroups[0]
 	labels := map[string]string{
 		"app": ig.Name,
