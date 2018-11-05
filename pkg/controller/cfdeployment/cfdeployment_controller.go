@@ -2,6 +2,7 @@ package cfdeployment
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	fissilev1alpha1 "code.cloudfoundry.org/cf-operator/pkg/apis/fissile/v1alpha1"
@@ -28,11 +29,11 @@ import (
 // Add creates a new CFDeployment Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+	return add(mgr, NewReconciler(mgr))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+func NewReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileCFDeployment{client: mgr.GetClient(), scheme: mgr.GetScheme()}
 }
 
@@ -81,7 +82,7 @@ type ReconcileCFDeployment struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileCFDeployment) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	log.Printf("Reconciling CFDeployment %s/%s\n", request.Namespace, request.Name)
+	log.Printf("Reconciling CFDeployment %s\n", request.NamespacedName)
 
 	// Fetch the CFDeployment instance
 	instance := &fissilev1alpha1.CFDeployment{}
@@ -104,6 +105,9 @@ func (r *ReconcileCFDeployment) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// TODO validation
+	if len(manifest.InstanceGroups) < 1 {
+		return reconcile.Result{}, fmt.Errorf("manifest is missing instance groups")
+	}
 
 	// Define a new Pod object
 	pod := newPodForCR(manifest)

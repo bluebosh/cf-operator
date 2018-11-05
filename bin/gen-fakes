@@ -1,2 +1,4 @@
-#counterfeiter package Interface
+#!/bin/sh
+set -e
 
+counterfeiter -o pkg/controller/cfdeployment/fakes/manager.go vendor/sigs.k8s.io/controller-runtime/pkg/manager Manager
