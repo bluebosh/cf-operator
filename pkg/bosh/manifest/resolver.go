@@ -50,23 +50,26 @@ func (r *ResolverImpl) ResolveCRD(spec fissile.BOSHDeploymentSpec, namespace str
 	}
 
 	// unmarshal ops.data into bosh ops if exist
-	opsConfig := &corev1.ConfigMap{}
+	//opsConfig := &corev1.ConfigMap{}
+	opsSecret := &corev1.Secret{}
 	opsRef := spec.OpsRef
-	if opsRef == "" {
+	if len(opsRef) == 0 {
 		err = yaml.Unmarshal([]byte(m), manifest)
 		return manifest, err
 	}
 
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: opsRef, Namespace: namespace}, opsConfig)
+	//err = r.client.Get(context.TODO(), types.NamespacedName{Name: opsRef, Namespace: namespace}, opsConfig)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: opsRef[1]["secretRef"], Namespace: namespace}, opsSecret)
 	if err != nil {
 		return manifest, errors.Wrapf(err, "Failed to retrieve configmap '%s/%s' via client.Get", namespace, opsRef)
 	}
 
-	opsData, ok := opsConfig.Data["ops"]
+	//opsData, ok := opsConfig.Data["ops"]
+	encodedData, ok := opsSecret.Data["ops"]
 	if !ok {
 		return manifest, fmt.Errorf("configmap doesn't contain ops key")
 	}
-
+	opsData := fmt.Sprintf("%s", encodedData)
 	err = r.interpolator.BuildOps([]byte(opsData))
 	if err != nil {
 		return manifest, errors.Wrapf(err, "Failed to build ops: %#v", opsData)
