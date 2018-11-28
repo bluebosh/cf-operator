@@ -25,20 +25,19 @@ func NewInterpolator() *InterpolatorImpl {
 	return &InterpolatorImpl{}
 }
 
-func (i *InterpolatorImpl) BuildOps(opsBytes []byte) error{
+func (i *InterpolatorImpl) BuildOps(opsBytes []byte) error {
 	var opDefs []patch.OpDefinition
 	err := yaml.Unmarshal(opsBytes, &opDefs)
 	if err != nil {
-		return  errors.Wrap(err, fmt.Sprintf("Deserializing ops data '%s'", opsBytes))
+		return errors.Wrap(err, fmt.Sprintf("Deserializing ops data '%s'", opsBytes))
 	}
 
 	ops, err := patch.NewOpsFromDefinitions(opDefs)
 	if err != nil {
 		return errors.Wrap(err, "Building ops")
 	}
-	i.ops = ops
+	i.ops = append(i.ops, ops)
 	return nil
-
 }
 
 // Interpolate returns manifest which is rendered by operations files

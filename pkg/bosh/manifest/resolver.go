@@ -50,34 +50,75 @@ func (r *ResolverImpl) ResolveCRD(spec fissile.BOSHDeploymentSpec, namespace str
 	}
 
 	// unmarshal ops.data into bosh ops if exist
-	opsConfig := &corev1.ConfigMap{}
-	opsRef := spec.OpsRef
-	if opsRef == "" {
+	opsRefs := spec.OpsRefs
+	if len(opsRefs) == 0 {
 		err = yaml.Unmarshal([]byte(m), manifest)
 		return manifest, err
 	}
 
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: opsRef, Namespace: namespace}, opsConfig)
-	if err != nil {
-		return manifest, errors.Wrapf(err, "Failed to retrieve configmap '%s/%s' via client.Get", namespace, opsRef)
-	}
-
-	opsData, ok := opsConfig.Data["ops"]
-	if !ok {
-		return manifest, fmt.Errorf("configmap doesn't contain ops key")
-	}
-
-	err = r.interpolator.BuildOps([]byte(opsData))
-	if err != nil {
-		return manifest, errors.Wrapf(err, "Failed to build ops: %#v", opsData)
+	for _, opsRef := range opsRefs {
+		switch opsRef.Type {
+		case "secret":
+			err = r.buildOpsFromSecret(opsRef.Ref, namespace)
+			if err != nil {
+				return manifest, errors.Wrapf(err, "Failed to build ops from secret %#v", m)
+			}
+		case "configMap":
+			err = r.buildOpsFromConfigMap(opsRef.Ref, namespace)
+			if err != nil {
+				return manifest, errors.Wrapf(err, "Failed to build ops from config map %#v", m)
+			}
+		default:
+			return manifest, fmt.Errorf("unrecognized ops-ref type: %s", opsRef.Type)
+		}
 	}
 
 	bytes, err := r.interpolator.Interpolate([]byte(m))
 	if err != nil {
-		return manifest, errors.Wrapf(err, "Failed to interpolate %#v by %#v", m, opsData)
+		return manifest, errors.Wrapf(err, "Failed to interpolate %#v", m)
 	}
 
 	err = yaml.Unmarshal(bytes, manifest)
 
 	return manifest, err
+}
+
+func (r *ResolverImpl) buildOpsFromSecret(secretName string, namespace string) error {
+	opsSecret := &corev1.Secret{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: secretName, Namespace: namespace}, opsSecret)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to retrieve secret '%s/%s' via client.Get", namespace, secretName)
+	}
+
+	encodedData, ok := opsSecret.Data["ops"]
+	if !ok {
+		return fmt.Errorf("secert doesn't contain ops key")
+	}
+	opsData := fmt.Sprintf("%s", encodedData)
+	err = r.interpolator.BuildOps([]byte(opsData))
+	if err != nil {
+		return errors.Wrapf(err, "Failed to build ops: %#v", opsData)
+	}
+
+	return nil
+}
+
+func (r *ResolverImpl) buildOpsFromConfigMap(configMapName string, namespace string) error {
+	opsConfig := &corev1.ConfigMap{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: configMapName, Namespace: namespace}, opsConfig)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to retrieve config map '%s/%s' via client.Get", namespace, configMapName)
+	}
+
+	encodedData, ok := opsConfig.Data["ops"]
+	if !ok {
+		return fmt.Errorf("config map doesn't contain ops key")
+	}
+	opsData := fmt.Sprintf("%s", encodedData)
+	err = r.interpolator.BuildOps([]byte(opsData))
+	if err != nil {
+		return errors.Wrapf(err, "Failed to build ops: %#v", opsData)
+	}
+
+	return nil
 }

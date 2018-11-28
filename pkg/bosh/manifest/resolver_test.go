@@ -75,6 +75,13 @@ var _ = Describe("Resolver", func() {
    value: desired_value
 `},
 			},
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ops-secret",
+					Namespace: "default",
+				},
+				Data: map[string][]byte{"ops": []byte("LS0t")},
+			},
 		)
 		interpolator = &fakeIpl.FakeInterpolator{}
 		resolver = bdm.NewResolver(client, interpolator)
@@ -91,7 +98,36 @@ var _ = Describe("Resolver", func() {
 		})
 
 		It("works for valid CRs containing ops", func() {
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "foo", OpsRef: "baz"}
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "configMap",
+						Ref:  "baz",
+					},
+				},
+			}
+			manifest, err := resolver.ResolveCRD(spec, "default")
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(manifest).ToNot(Equal(nil))
+			Expect(len(manifest.InstanceGroups)).To(Equal(0))
+		})
+
+		It("works for valid CRs containing multi ops", func() {
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "configMap",
+						Ref:  "baz",
+					},
+					{
+						Type: "secret",
+						Ref:  "ops-secret",
+					},
+				},
+			}
 			manifest, err := resolver.ResolveCRD(spec, "default")
 
 			Expect(err).ToNot(HaveOccurred())
@@ -120,24 +156,48 @@ var _ = Describe("Resolver", func() {
 			Expect(err.Error()).To(ContainSubstring("yaml: unmarshal errors"))
 		})
 
-		It("throws an error if ops configmap can not be found", func() {
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "foo", OpsRef: "boo"}
+		It("throws an error if ops configMap can not be found", func() {
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "configMap",
+						Ref:  "boo",
+					},
+				},
+			}
 			_, err := resolver.ResolveCRD(spec, "default")
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("Failed to retrieve configmap '%s/%s' via client.Get", "default", "boo")))
+			Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("Failed to retrieve config map '%s/%s' via client.Get", "default", "boo")))
 		})
 
-		It("throws an error if ops configmap can not be found", func() {
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "foo", OpsRef: "missing_key"}
+		It("throws an error if ops configMap can not be found", func() {
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "configMap",
+						Ref:  "missing_key",
+					},
+				},
+			}
 			_, err := resolver.ResolveCRD(spec, "default")
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("configmap doesn't contain ops key"))
+			Expect(err.Error()).To(ContainSubstring("config map doesn't contain ops key"))
 		})
 
 		It("throws an error if build invalid ops", func() {
 			interpolator.BuildOpsReturns(errors.New("fake-error"))
 
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "foo", OpsRef: "invalid_ops"}
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "configMap",
+						Ref:  "invalid_ops",
+					},
+				},
+			}
 			_, err := resolver.ResolveCRD(spec, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("Failed to build ops"))
@@ -145,10 +205,72 @@ var _ = Describe("Resolver", func() {
 
 		It("throws an error if interpolate missing variables into a manifest", func() {
 			interpolator.InterpolateReturns(nil, errors.New("fake-error"))
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "foo", OpsRef: "missing_variables"}
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "configMap",
+						Ref:  "missing_variables",
+					},
+				},
+			}
 			_, err := resolver.ResolveCRD(spec, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("Failed to interpolate"))
+		})
+
+		It("throws an error if containing unsupported ops type", func() {
+			interpolator.InterpolateReturns(nil, errors.New("fake-error"))
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "unsupported_type",
+						Ref:  "variables",
+					},
+				},
+			}
+			_, err := resolver.ResolveCRD(spec, "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unrecognized ops-ref type"))
+		})
+
+		It("throws an error if ops configMap can not be found when contains multi-refs", func() {
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "secret",
+						Ref:  "ops-secret",
+					},
+					{
+						Type: "configMap",
+						Ref:  "missing_key",
+					},
+				},
+			}
+			_, err := resolver.ResolveCRD(spec, "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Failed to build ops from config map"))
+		})
+
+		It("throws an error if ops secret can not be found when contains multi-refs", func() {
+			spec := fissile.BOSHDeploymentSpec{
+				ManifestRef: "foo",
+				OpsRefs: []fissile.OpsRef{
+					{
+						Type: "secret",
+						Ref:  "missing_key",
+					},
+					{
+						Type: "configMap",
+						Ref:  "baz",
+					},
+				},
+			}
+			_, err := resolver.ResolveCRD(spec, "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Failed to build ops from secret"))
 		})
 	})
 })
