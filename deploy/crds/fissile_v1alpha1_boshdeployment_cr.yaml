@@ -3,7 +3,8 @@ kind: BOSHDeployment
 metadata:
   name: example-boshdeployment
 spec:
-  manifest-ref: "bosh-manifest"
+  manifest-ref:
+    - configMapRef: "bosh-manifest"
   ops-ref:
     - configMapRef: "bosh-ops"
     - secretRef: "bosh-ops-secret"

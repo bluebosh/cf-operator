@@ -37,7 +37,7 @@ func (r *ResolverImpl) ResolveCRD(spec fissile.BOSHDeploymentSpec, namespace str
 	ref := spec.ManifestRef
 
 	config := &corev1.ConfigMap{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{Name: ref, Namespace: namespace}, config)
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: ref[0]["configMapRef"], Namespace: namespace}, config)
 	if err != nil {
 		return manifest, errors.Wrapf(err, "Failed to retrieve configmap '%s/%s' via client.Get", namespace, ref)
 	}
