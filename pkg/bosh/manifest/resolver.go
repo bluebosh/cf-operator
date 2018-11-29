@@ -32,44 +32,52 @@ func NewResolver(client client.Client, interpolator ipl.Interpolator) *ResolverI
 // ResolveCRD returns manifest referenced by our CRD
 func (r *ResolverImpl) ResolveCRD(spec fissile.BOSHDeploymentSpec, namespace string) (*Manifest, error) {
 	manifest := &Manifest{}
-
+	var (
+		m   string
+		err error
+		ok  bool
+	)
 	// TODO for now we only support config map ref
-	ref := spec.ManifestRef
+	manifestRef := spec.Manifest
 
-	config := &corev1.ConfigMap{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{Name: ref, Namespace: namespace}, config)
-	if err != nil {
-		return manifest, errors.Wrapf(err, "Failed to retrieve configmap '%s/%s' via client.Get", namespace, ref)
-	}
-
-	// unmarshal manifest.data into bosh deployment manifest...
-	// TODO re-use LoadManifest() from fissile
-	m, ok := config.Data["manifest"]
-	if !ok {
-		return manifest, fmt.Errorf("configmap doesn't contain manifest key")
+	switch manifestRef.Type {
+	case "configMap":
+		config := &corev1.ConfigMap{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Name: manifestRef.Ref, Namespace: namespace}, config)
+		if err != nil {
+			return manifest, errors.Wrapf(err, "Failed to retrieve configmap '%s/%s' via client.Get", namespace, manifestRef.Ref)
+		}
+		// unmarshal manifest.data into bosh deployment manifest...
+		// TODO re-use LoadManifest() from fissile
+		m, ok = config.Data["manifest"]
+		if !ok {
+			return manifest, fmt.Errorf("configmap doesn't contain manifest key")
+		}
+	default:
+		return manifest, fmt.Errorf("unrecognized manifest type: %s", manifestRef.Type)
 	}
 
 	// unmarshal ops.data into bosh ops if exist
-	opsRefs := spec.OpsRefs
-	if len(opsRefs) == 0 {
+	ops := spec.Ops
+	if len(ops) == 0 {
 		err = yaml.Unmarshal([]byte(m), manifest)
 		return manifest, err
 	}
 
-	for _, opsRef := range opsRefs {
-		switch opsRef.Type {
+	for _, op := range ops {
+		switch op.Type {
 		case "secret":
-			err = r.buildOpsFromSecret(opsRef.Ref, namespace)
+			err = r.buildOpsFromSecret(op.Ref, namespace)
 			if err != nil {
 				return manifest, errors.Wrapf(err, "Failed to build ops from secret %#v", m)
 			}
 		case "configMap":
-			err = r.buildOpsFromConfigMap(opsRef.Ref, namespace)
+			err = r.buildOpsFromConfigMap(op.Ref, namespace)
 			if err != nil {
 				return manifest, errors.Wrapf(err, "Failed to build ops from config map %#v", m)
 			}
 		default:
-			return manifest, fmt.Errorf("unrecognized ops-ref type: %s", opsRef.Type)
+			return manifest, fmt.Errorf("unrecognized ops-ref type: %s", op.Type)
 		}
 	}
 

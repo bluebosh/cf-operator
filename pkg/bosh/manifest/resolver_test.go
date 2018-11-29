@@ -89,7 +89,12 @@ var _ = Describe("Resolver", func() {
 
 	Describe("ResolveCRD", func() {
 		It("works for valid CRs", func() {
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "foo"}
+			spec := fissile.BOSHDeploymentSpec{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+			}
 			manifest, err := resolver.ResolveCRD(spec, "default")
 
 			Expect(err).ToNot(HaveOccurred())
@@ -99,8 +104,11 @@ var _ = Describe("Resolver", func() {
 
 		It("works for valid CRs containing ops", func() {
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "configMap",
 						Ref:  "baz",
@@ -116,8 +124,11 @@ var _ = Describe("Resolver", func() {
 
 		It("works for valid CRs containing multi ops", func() {
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "configMap",
 						Ref:  "baz",
@@ -136,30 +147,61 @@ var _ = Describe("Resolver", func() {
 		})
 
 		It("throws an error if the CR can not be found", func() {
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "bar"}
+			spec := fissile.BOSHDeploymentSpec{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "bar",
+				},
+			}
 			_, err := resolver.ResolveCRD(spec, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("Failed to retrieve configmap '%s/%s' via client.Get", "default", "bar")))
 		})
 
 		It("throws an error if the CR is empty", func() {
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "missing_key"}
+			spec := fissile.BOSHDeploymentSpec{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "missing_key",
+				},
+			}
 			_, err := resolver.ResolveCRD(spec, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("configmap doesn't contain manifest key"))
 		})
 
 		It("throws an error on invalid yaml", func() {
-			spec := fissile.BOSHDeploymentSpec{ManifestRef: "invalid_yaml"}
+			spec := fissile.BOSHDeploymentSpec{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "invalid_yaml",
+				},
+			}
 			_, err := resolver.ResolveCRD(spec, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("yaml: unmarshal errors"))
 		})
 
+		It("throws an error if containing unsupported manifest type", func() {
+			interpolator.InterpolateReturns(nil, errors.New("fake-error"))
+			spec := fissile.BOSHDeploymentSpec{
+				Manifest: fissile.Manifest{
+					Type: "unsupported_type",
+					Ref:  "foo",
+				},
+			}
+			_, err := resolver.ResolveCRD(spec, "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unrecognized manifest type"))
+		})
+
 		It("throws an error if ops configMap can not be found", func() {
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "configMap",
 						Ref:  "boo",
@@ -173,8 +215,11 @@ var _ = Describe("Resolver", func() {
 
 		It("throws an error if ops configMap can not be found", func() {
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "configMap",
 						Ref:  "missing_key",
@@ -190,8 +235,11 @@ var _ = Describe("Resolver", func() {
 			interpolator.BuildOpsReturns(errors.New("fake-error"))
 
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "configMap",
 						Ref:  "invalid_ops",
@@ -206,8 +254,11 @@ var _ = Describe("Resolver", func() {
 		It("throws an error if interpolate missing variables into a manifest", func() {
 			interpolator.InterpolateReturns(nil, errors.New("fake-error"))
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "configMap",
 						Ref:  "missing_variables",
@@ -222,8 +273,11 @@ var _ = Describe("Resolver", func() {
 		It("throws an error if containing unsupported ops type", func() {
 			interpolator.InterpolateReturns(nil, errors.New("fake-error"))
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "unsupported_type",
 						Ref:  "variables",
@@ -237,8 +291,11 @@ var _ = Describe("Resolver", func() {
 
 		It("throws an error if ops configMap can not be found when contains multi-refs", func() {
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "secret",
 						Ref:  "ops-secret",
@@ -256,8 +313,11 @@ var _ = Describe("Resolver", func() {
 
 		It("throws an error if ops secret can not be found when contains multi-refs", func() {
 			spec := fissile.BOSHDeploymentSpec{
-				ManifestRef: "foo",
-				OpsRefs: []fissile.OpsRef{
+				Manifest: fissile.Manifest{
+					Type: "configMap",
+					Ref:  "foo",
+				},
+				Ops: []fissile.Ops{
 					{
 						Type: "secret",
 						Ref:  "missing_key",

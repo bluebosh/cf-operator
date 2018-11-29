@@ -11,12 +11,17 @@ import (
 type BOSHDeploymentSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	ManifestRef string   `json:"manifest-ref"`
-	OpsRefs     []OpsRef `json:"ops-refs"`
+	Manifest Manifest `json:"manifest"`
+	Ops      []Ops    `json:"ops"`
+}
+
+type Manifest struct {
+	Type string `json:"type"`
+	Ref  string `json:"ref"`
 }
 
 // OpsRef defines the ops type and location
-type OpsRef struct {
+type Ops struct {
 	Type string `json:"type"`
 	Ref  string `json:"ref"`
 }
