@@ -3,6 +3,7 @@ package manifest
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	fissile "code.cloudfoundry.org/cf-operator/pkg/apis/fissile/v1alpha1"
 	ipl "code.cloudfoundry.org/cf-operator/pkg/bosh/manifest/interpolator"
@@ -10,6 +11,7 @@ import (
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/helm/pkg/getter"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -76,6 +78,11 @@ func (r *ResolverImpl) ResolveCRD(spec fissile.BOSHDeploymentSpec, namespace str
 			if err != nil {
 				return manifest, errors.Wrapf(err, "Failed to build ops from config map %#v", m)
 			}
+		case "url":
+			err = r.buildOpsFromURL(op.Ref, namespace)
+			if err != nil {
+				return manifest, errors.Wrapf(err, "Failed to build ops from URL %#v", m)
+			}
 		default:
 			return manifest, fmt.Errorf("unrecognized ops-ref type: %s", op.Type)
 		}
@@ -129,4 +136,41 @@ func (r *ResolverImpl) buildOpsFromConfigMap(configMapName string, namespace str
 	}
 
 	return nil
+}
+
+func (r *ResolverImpl) buildOpsFromURL(filePath string, namespace string) error {
+	url, err := url.Parse(filePath)
+	if err != nil {
+		return fmt.Errorf("the URL passed to filename %q is not valid", filePath)
+	}
+	p := getter.Providers{
+		{
+			Schemes: []string{"http", "https"},
+			New:     newHTTPGetter,
+		},
+	}
+	getterConstructor, err := p.ByScheme(url.Scheme)
+	if err != nil {
+		return err
+	}
+
+	getter, err := getterConstructor(filePath, "", "", "")
+	if err != nil {
+		return err
+	}
+	data, err := getter.Get(filePath)
+	if err != nil {
+		return err
+	}
+
+	err = r.interpolator.BuildOps(data.Bytes())
+	if err != nil {
+		return errors.Wrapf(err, "Failed to build ops: %#v", data.Bytes())
+	}
+
+	return nil
+}
+
+func newHTTPGetter(URL, CertFile, KeyFile, CAFile string) (getter.Getter, error) {
+	return getter.NewHTTPGetter(URL, CertFile, KeyFile, CAFile)
 }
